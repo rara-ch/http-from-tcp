@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"strings"
 )
 
 func main() {
@@ -19,6 +20,8 @@ func main() {
 	fmt.Printf("Reading data from %s\n", filePath)
 	fmt.Println("=======================================")
 
+	currentLine := ""
+
 	for {
 		container := make([]byte, 8)
 		_, err := file.Read(container)
@@ -29,6 +32,15 @@ func main() {
 			log.Fatalf("error other than io.EOF retured from *os.File.Read()\n")
 		}
 
-		fmt.Printf("read: %s\n", string(container))
+		parts := strings.Split(string(container), "\n")
+
+		currentLine += parts[0]
+
+		if len(parts) == 2 {
+			fmt.Printf("read: %s\n", currentLine)
+			currentLine = parts[1]
+		}
 	}
+	// Print the last line as the break stops it from being printed
+	fmt.Printf("read: %s\n", currentLine)
 }
