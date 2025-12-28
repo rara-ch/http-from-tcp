@@ -37,12 +37,10 @@ func main() {
 func getLinesChannel(f io.ReadCloser) <-chan string {
 	lines := make(chan string)
 
-	currentLine := ""
-
 	go func() {
 		defer close(lines)
 		defer f.Close()
-
+		currentLine := ""
 		for {
 			container := make([]byte, 8)
 			_, err := f.Read(container)
