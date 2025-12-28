@@ -9,6 +9,8 @@ import (
 )
 
 func main() {
+	fmt.Println("Server is running")
+
 	listener, err := net.Listen("tcp", ":42069")
 	if err != nil {
 		log.Fatalf("could not create tcp listener: %s", err)
