@@ -15,32 +15,46 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not open %s for reading: %v\n", filePath, err)
 	}
-	defer file.Close()
 
 	fmt.Printf("Reading data from %s\n", filePath)
 	fmt.Println("=======================================")
 
+	lines := getLinesChannel(file)
+
+	for line := range lines {
+		fmt.Printf("read: %s\n", line)
+	}
+}
+
+func getLinesChannel(f io.ReadCloser) <-chan string {
+	lines := make(chan string)
+
 	currentLine := ""
 
-	for {
-		container := make([]byte, 8)
-		_, err := file.Read(container)
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatalf("error other than io.EOF retured from *os.File.Read()\n")
-		}
+	go func() {
+		defer close(lines)
+		defer f.Close()
 
-		parts := strings.Split(string(container), "\n")
+		for {
+			container := make([]byte, 8)
+			_, err := f.Read(container)
+			if err == io.EOF {
+				lines <- currentLine
+				break
+			}
+			if err != nil {
+				log.Fatalf("error other than io.EOF retured from *os.File.Read()\n")
+			}
 
-		currentLine += parts[0]
+			parts := strings.Split(string(container), "\n")
 
-		if len(parts) == 2 {
-			fmt.Printf("read: %s\n", currentLine)
-			currentLine = parts[1]
+			currentLine += parts[0]
+
+			if len(parts) == 2 {
+				lines <- currentLine
+				currentLine = parts[1]
+			}
 		}
-	}
-	// Print the last line as the break stops it from being printed
-	fmt.Printf("read: %s\n", currentLine)
+	}()
+	return lines
 }
