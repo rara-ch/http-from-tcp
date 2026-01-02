@@ -1,6 +1,7 @@
 package request
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -17,38 +18,46 @@ type RequestLine struct {
 	Method        string
 }
 
+const crlf = "\r\n"
+
 func RequestFromReader(reader io.Reader) (*Request, error) {
 	reqRaw, err := io.ReadAll(reader)
 	if err != nil {
 		return nil, err
 	}
 
-	req := string(reqRaw)
-
-	reqLineSlice := strings.Split(req, "\r\n")[0]
-	reqLine := parseRequestLine(reqLineSlice)
-	if reqLine.Method == "" {
-		return nil, errors.New("errors in request line")
+	reqLine, err := parseRequestLine(reqRaw)
+	if err != nil {
+		return nil, err
 	}
 
 	return &Request{
-		RequestLine: reqLine,
+		RequestLine: *reqLine,
 	}, nil
 }
 
-func parseRequestLine(reqLine string) RequestLine {
-	splitReqLine := strings.Split(reqLine, " ")
-	if len(splitReqLine) != 3 {
-		return RequestLine{}
+func parseRequestLine(req []byte) (*RequestLine, error) {
+	indexCRLF := bytes.Index(req, []byte(crlf))
+	if indexCRLF == -1 {
+		return nil, errors.New("error: crlf does not exists in request line")
 	}
-	method := splitReqLine[0]
-	path := splitReqLine[1]
-	httpType := splitReqLine[2]
 
-	fmt.Println(method)
-	fmt.Println(path)
-	fmt.Println(httpType)
+	requestLineText := string(req[:indexCRLF])
+	requestLine, err := requestLineFromString(requestLineText)
+	if err != nil {
+		return nil, err
+	}
 
+	return requestLine, nil
+}
+
+func requestLineFromString(req string) (*RequestLine, error) {
+	parts := strings.Split(req, " ")
+	if len(parts) != 3 {
+		return nil, errors.New("error: http version, request target, and method are not seperate")
+	}
+
+	method := parts[0]
 	allowedLetters := map[string]bool{
 		"A": true,
 		"B": true,
@@ -77,21 +86,23 @@ func parseRequestLine(reqLine string) RequestLine {
 		"Y": true,
 		"Z": true,
 	}
-
 	for _, letter := range method {
 		if _, ok := allowedLetters[string(letter)]; !ok {
-			return RequestLine{}
+			return nil, fmt.Errorf("error: invalid method: %s", method)
 		}
 	}
 
-	httpVersion := strings.TrimPrefix(httpType, "HTTP/")
-	if httpVersion != "1.1" {
-		return RequestLine{}
+	requestTarget := parts[1]
+
+	version := parts[2]
+	versionParts := strings.Split(version, "/")
+	if versionParts[0] != "HTTP" || versionParts[1] != "1.1" {
+		return nil, fmt.Errorf("error: invalid http version: %s", version)
 	}
 
-	return RequestLine{
-		HttpVersion:   httpVersion,
-		RequestTarget: path,
+	return &RequestLine{
+		HttpVersion:   versionParts[1],
+		RequestTarget: requestTarget,
 		Method:        method,
-	}
+	}, nil
 }
