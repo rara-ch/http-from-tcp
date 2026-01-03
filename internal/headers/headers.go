@@ -42,7 +42,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		h[fieldKey] = fieldValue
 	}
 
-	return len(fieldLine) + len(crlf), false, nil
+	return indexCRLF + len(crlf), false, nil
 }
 
 func validateFieldKey(key string) bool {
