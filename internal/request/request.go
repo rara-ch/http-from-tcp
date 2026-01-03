@@ -8,8 +8,16 @@ import (
 	"strings"
 )
 
+type RequestParseState int
+
+const (
+	initialised RequestParseState = iota
+	done
+)
+
 type Request struct {
-	RequestLine RequestLine
+	RequestLine       RequestLine
+	RequestParseState RequestParseState
 }
 
 type RequestLine struct {
@@ -19,42 +27,66 @@ type RequestLine struct {
 }
 
 const crlf = "\r\n"
+const bufferSize = 8
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	reqRaw, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
+	buf := make([]byte, bufferSize, bufferSize)
+	readToIndex := 0
+	req := &Request{
+		RequestParseState: initialised,
 	}
 
-	reqLine, err := parseRequestLine(reqRaw)
-	if err != nil {
-		return nil, err
+	for req.RequestParseState != done {
+		if readToIndex >= bufferSize {
+			newBuf := make([]byte, len(buf)*2)
+			copy(newBuf, buf)
+			buf = newBuf
+		}
+
+		numBytesRead, err := reader.Read(buf[readToIndex:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				req.RequestParseState = done
+				break
+			}
+
+			return nil, err
+		}
+		readToIndex += numBytesRead
+
+		numBytesParsed, err := req.parse(buf[:readToIndex])
+		if err != nil {
+			return nil, err
+		}
+
+		copy(buf, buf[:readToIndex])
+		readToIndex -= numBytesParsed
 	}
 
-	return &Request{
-		RequestLine: *reqLine,
-	}, nil
+	return req, nil
 }
 
-func parseRequestLine(req []byte) (*RequestLine, error) {
+func parseRequestLine(req []byte) (*RequestLine, int, error) {
 	indexCRLF := bytes.Index(req, []byte(crlf))
 	if indexCRLF == -1 {
-		return nil, errors.New("error: crlf does not exists in request line")
+		return nil, 0, nil
 	}
+
+	numBytes := len(req)
 
 	requestLineText := string(req[:indexCRLF])
 	requestLine, err := requestLineFromString(requestLineText)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return requestLine, nil
+	return requestLine, numBytes + len(crlf), nil
 }
 
 func requestLineFromString(req string) (*RequestLine, error) {
 	parts := strings.Split(req, " ")
 	if len(parts) != 3 {
-		return nil, errors.New("error: http version, request target, and method are not seperate")
+		return nil, fmt.Errorf("error: http version, request target, and method are not seperate: %s", req)
 	}
 
 	method := parts[0]
@@ -105,4 +137,26 @@ func requestLineFromString(req string) (*RequestLine, error) {
 		RequestTarget: requestTarget,
 		Method:        method,
 	}, nil
+}
+
+func (r *Request) parse(data []byte) (int, error) {
+	if r.RequestParseState == done {
+		return 0, errors.New("error: can not parse request in done state")
+	}
+
+	if r.RequestParseState == initialised {
+		requestLine, numBytes, err := parseRequestLine(data)
+		if err != nil {
+			return 0, err
+		}
+		if numBytes == 0 {
+			return 0, nil
+		}
+
+		r.RequestLine = *requestLine
+		r.RequestParseState = done
+		return numBytes, nil
+	}
+
+	return 0, fmt.Errorf("error: state is unkown: %v", r.RequestParseState)
 }
