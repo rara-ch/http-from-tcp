@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TextHeaders(t *testing.T) {
+func TestSingleHeadersParse(t *testing.T) {
 	// Test: Valid single header
 	headers := NewHeaders()
 	data := []byte("HOST: localhost:42069\r\n\r\n")
@@ -20,12 +20,12 @@ func TextHeaders(t *testing.T) {
 
 	// Test: Valid single header with extra whitespace
 	headers = NewHeaders()
-	data = []byte("             HosT:        localhost:42069       \r\n")
+	data = []byte("             HosT:        localhost:42069       \r\n\r\n")
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
-	assert.Equal(t, 23, n)
+	assert.Equal(t, 50, n)
 	assert.False(t, done)
 
 	// Test: Valid 2 headers with existing headers
@@ -35,16 +35,17 @@ func TextHeaders(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "localhost:42069", headers["host"])
-	assert.Equal(t, "curl/7.81.0", headers["User-Agent"])
+	assert.Equal(t, "curl/7.81.0", headers["user-agent"])
 	assert.Equal(t, 25, n)
 	assert.False(t, done)
 
 	// Test: Valid Done
 	headers = NewHeaders()
 	data = []byte("\r\n")
+	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
 	require.NotNil(t, headers)
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 2, n)
 	assert.True(t, done)
 
 	// Test: Invalid spacing header
@@ -65,9 +66,11 @@ func TextHeaders(t *testing.T) {
 
 	// Test: Valid already existing header key
 	headers = map[string]string{"host": "localhost:42069"}
-	data = []byte("host: localhost:69420\r\n")
+	data = []byte("host: localhost:69420\r\n\r\n")
 	n, done, err = headers.Parse(data)
 	require.NoError(t, err)
+	require.Equal(t, 23, n)
+	assert.Equal(t, "localhost:42069, localhost:69420", headers["host"])
 	assert.Equal(t, len("host: localhost:69420\r\n"), n)
 	assert.False(t, done)
 }

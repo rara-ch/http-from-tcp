@@ -24,24 +24,24 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return len(crlf), true, nil
 	}
 	fieldLine := data[:indexCRLF]
-	fieldParts := strings.SplitAfter(string(fieldLine), ":")
 
-	fieldKey := strings.ToLower(strings.TrimSpace(fieldParts[0]))
+	indexColon := bytes.Index(fieldLine, []byte(":"))
+	fieldKey := strings.TrimLeft(string(data[:indexColon]), " ")
+	fieldKey = strings.ToLower(fieldKey)
+
 	if isKeyValid := validateFieldKey(fieldKey); !isKeyValid {
 		return 0, false, fmt.Errorf("error: field key has invalid characters: %s", fieldKey)
 	}
-	if strings.Contains(fieldKey, " ") {
-		return 0, false, fmt.Errorf("error: field key is not formatted correctly: %s", fieldKey)
-	}
 
-	fieldValue := strings.TrimSpace(fieldParts[1])
+	fieldValue := strings.TrimSpace(string(fieldLine[indexColon+1:]))
 
 	value, ok := h[fieldKey]
 	if ok {
-		h[fieldKey] = value + ", " + fieldValue
+		h[fieldKey] = strings.Join([]string{value, fieldValue}, ", ")
+	} else {
+		h[fieldKey] = fieldValue
 	}
 
-	h[fieldKey] = fieldValue
 	return len(fieldLine) + len(crlf), false, nil
 }
 
