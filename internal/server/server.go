@@ -1,6 +1,7 @@
 package server
 
 import (
+	"httpfromtcp/internal/response"
 	"log"
 	"net"
 	"strconv"
@@ -14,10 +15,10 @@ type Server struct {
 }
 
 func (s *Server) Close() error {
+	s.closed.Store(true)
 	if s.listener != nil {
 		return s.listener.Close()
 	}
-	s.closed.Store(true)
 	return nil
 }
 
@@ -38,9 +39,20 @@ func (s *Server) listen() {
 }
 
 func (s *Server) handle(conn net.Conn) {
-	conn.Write([]byte("HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 13\n\nHello World!"))
+	defer conn.Close()
 
-	conn.Close()
+	err := response.WriteStatusLine(conn, response.Code200)
+	if err != nil {
+		log.Printf("error writing status line: %s", err)
+		conn.Close()
+	}
+
+	headers := response.GetDefaultHeaders(0)
+	err = response.WriteHeaders(conn, headers)
+	if err != nil {
+		log.Printf("error writing headers: %s", err)
+		conn.Close()
+	}
 }
 
 func Serve(port int) (*Server, error) {
