@@ -14,6 +14,12 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
+func (h Headers) Get(key string) (string, bool) {
+	key = strings.ToLower(key)
+	value, ok := h[key]
+	return value, ok
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	indexCRLF := bytes.Index(data, []byte(crlf))
 	if indexCRLF == -1 {
