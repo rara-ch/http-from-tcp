@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -13,13 +14,15 @@ type RequestParseState int
 
 const (
 	initialised RequestParseState = iota
-	done
 	parsingHeaders
+	parsingBody
+	done
 )
 
 type Request struct {
 	RequestLine       RequestLine
 	Headers           headers.Headers
+	Body              []byte
 	RequestParseState RequestParseState
 }
 
@@ -38,6 +41,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{
 		RequestParseState: initialised,
 		Headers:           headers.NewHeaders(),
+		Body:              []byte{},
 	}
 
 	for req.RequestParseState != done {
@@ -50,7 +54,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				if req.RequestParseState != parsingHeaders {
+				if req.RequestParseState != parsingHeaders && req.RequestParseState != parsingBody {
 					return nil, fmt.Errorf("incomplete request, in state: %d, read n bytes on EOF: %d", req.RequestParseState, numBytesRead)
 				} else if numBytesRead == 0 {
 					return nil, fmt.Errorf("incomplete request")
@@ -148,8 +152,6 @@ func requestLineFromString(req string) (*RequestLine, error) {
 func (r *Request) parse(data []byte) (int, error) {
 	totalBytesParsed := 0
 	for r.RequestParseState != done {
-		fmt.Println(string(data))
-		fmt.Printf("len(data)=%d, totalBytesParsed=%d\n", len(data), totalBytesParsed)
 		n, err := r.parseSingle(data[totalBytesParsed:])
 		if err != nil {
 			return 0, err
@@ -185,10 +187,29 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 		}
 
 		if isDone {
-			r.RequestParseState = done
+			r.RequestParseState = parsingBody
 		}
 
 		return numBytes, nil
+	case parsingBody:
+		contentLengthStr, ok := r.Headers.Get("Content-Length")
+		if !ok {
+			r.RequestParseState = done
+			return len(data), nil
+		}
+		contentLength, err := strconv.Atoi(contentLengthStr)
+		if err != nil {
+			return 0, err
+		}
+
+		r.Body = append(r.Body, data...)
+
+		if len(r.Body) > contentLength {
+			return 0, fmt.Errorf("error: body is larger than content-length: body: %d, content-length: %d", len(r.Body), contentLength)
+		} else if len(r.Body) == contentLength {
+			r.RequestParseState = done
+		}
+		return len(data), nil
 	case done:
 		return 0, fmt.Errorf("error: trying to read data in a done state")
 	default:
