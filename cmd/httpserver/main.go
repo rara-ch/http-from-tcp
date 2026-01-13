@@ -4,7 +4,6 @@ import (
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -27,21 +26,80 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handler(w io.Writer, r *request.Request) *server.HandlerError {
+func handler(w *response.Writer, r *request.Request) *server.HandlerError {
 	if r.RequestLine.RequestTarget == "/yourproblem" {
-		return &server.HandlerError{
-			StatusCode: response.Code400,
-			Message:    "Your problem is not my problem\n",
-		}
+		write400Response(w)
 	}
 
 	if r.RequestLine.RequestTarget == "/myproblem" {
-		return &server.HandlerError{
-			StatusCode: response.Code500,
-			Message:    "Woopsie, my bad\n",
-		}
+		write500Response(w)
 	}
 
-	w.Write([]byte("All good, frfr\n"))
+	write200Response(w)
 	return nil
+}
+
+func write400Response(w *response.Writer) {
+	body := []byte(`
+		<html>
+		<head>
+			<title>400 Bad Request</title>
+		</head>
+		<body>
+			<h1>Bad Request</h1>
+			<p>Your request honestly kinda sucked.</p>
+		</body>
+		</html>
+			`)
+
+	w.WriteStatusLine(response.Code400)
+
+	headers := response.GetDefaultHeaders(len(body))
+	headers.Override("content-type", "text/html")
+
+	w.WriteHeaders(headers)
+	w.WriteBody(body)
+}
+
+func write500Response(w *response.Writer) {
+	body := []byte(`
+	<html>
+		<head>
+			<title>500 Internal Server Error</title>
+		</head>
+		<body>
+			<h1>Internal Server Error</h1>
+			<p>Okay, you know what? This one is on me.</p>
+		</body>
+	</html>
+	`)
+
+	w.WriteStatusLine(response.Code500)
+
+	headers := response.GetDefaultHeaders(len(body))
+	headers.Override("content-type", "text/html")
+
+	w.WriteHeaders(headers)
+	w.WriteBody(body)
+}
+
+func write200Response(w *response.Writer) {
+	body := []byte(`
+	<html>
+		<head>
+			<title>200 OK</title>
+		</head>
+		<body>
+			<h1>Success!</h1>
+			<p>Your request was an absolute banger.</p>
+		</body>
+	</html>
+	`)
+	w.WriteStatusLine(response.Code200)
+
+	headers := response.GetDefaultHeaders(len(body))
+	headers.Override("content-type", "text/html")
+
+	w.WriteHeaders(headers)
+	w.WriteBody(body)
 }

@@ -1,11 +1,33 @@
 package response
 
 import (
+	"errors"
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"io"
+	"net"
 	"strconv"
 )
+
+type Writer struct {
+	writer io.Writer
+	state  writerState
+}
+
+type writerState int
+
+const (
+	statusLineState writerState = iota
+	headersState
+	bodyState
+)
+
+func NewWriter(conn net.Conn) *Writer {
+	return &Writer{
+		writer: conn,
+		state:  statusLineState,
+	}
+}
 
 type StatusCode int
 
@@ -15,7 +37,7 @@ const (
 	Code500 StatusCode = 500
 )
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+func GetStatusLine(statusCode StatusCode) string {
 	statusLine := "HTTP/1.1 "
 	switch statusCode {
 	case Code200:
@@ -27,10 +49,16 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	default:
 		statusLine += fmt.Sprintf("%v ", statusCode)
 	}
-	_, err := w.Write([]byte(statusLine + "\r\n"))
-	if err != nil {
-		return err
+	return statusLine + "\r\n"
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.state != statusLineState {
+		return errors.New("error: wrote status line after writing headers or body")
 	}
+	statusLine := GetStatusLine(statusCode)
+	w.writer.Write([]byte(statusLine))
+	w.state = headersState
 	return nil
 }
 
@@ -42,14 +70,29 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return h
 }
 
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.state != headersState {
+		return errors.New("error: wrote headers before writing status line or after writing body")
+	}
 	for key, value := range headers {
 		fieldLine := fmt.Sprintf("%s: %s \r\n", key, value)
-		_, err := w.Write([]byte(fieldLine))
+		_, err := w.writer.Write([]byte(fieldLine))
 		if err != nil {
 			return err
 		}
 	}
-	w.Write([]byte("\r\n"))
+	w.writer.Write([]byte("\r\n"))
+	w.state = bodyState
 	return nil
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.state != bodyState {
+		return 0, errors.New("error: wrote body before writing both status line and headers")
+	}
+	n, err := w.writer.Write(p)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }

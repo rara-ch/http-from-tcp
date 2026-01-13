@@ -51,6 +51,15 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	return indexCRLF + len(crlf), false, nil
 }
 
+func (h Headers) Override(key, value string) error {
+	key = strings.ToLower(key)
+	if _, ok := h[key]; !ok {
+		return fmt.Errorf("key does not exist in headers: %s", key)
+	}
+	h[key] = value
+	return nil
+}
+
 func validateFieldKey(key string) bool {
 	validChars := map[string]bool{
 		"!": true, "#": true, "$": true, "%": true, "&": true,

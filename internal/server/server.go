@@ -1,29 +1,27 @@
 package server
 
 import (
-	"bytes"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
-	"io"
 	"log"
 	"net"
 	"strconv"
 	"sync/atomic"
 )
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request) *HandlerError
 
 type HandlerError struct {
 	StatusCode response.StatusCode
 	Message    string
 }
 
-func (he *HandlerError) write(w io.Writer) {
-	response.WriteStatusLine(w, he.StatusCode)
-	h := response.GetDefaultHeaders(len(he.Message))
-	response.WriteHeaders(w, h)
-	w.Write([]byte(he.Message))
-}
+// func (he *HandlerError) write(w io.Writer) {
+// 	response.WriteStatusLine(w, he.StatusCode)
+// 	h := response.GetDefaultHeaders(len(he.Message))
+// 	response.WriteHeaders(w, h)
+// 	w.Write([]byte(he.Message))
+// }
 
 type Server struct {
 	closed atomic.Bool
@@ -59,34 +57,36 @@ func (s *Server) listen() {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
+	w := response.NewWriter(conn)
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Printf("error reading request: %v", err)
-		conn.Close()
+		w.WriteStatusLine(response.Code500)
+		body := []byte("could not parse request")
+		w.WriteHeaders(response.GetDefaultHeaders(len(body)))
+		w.WriteBody(body)
+		return
 	}
 
-	buf := &bytes.Buffer{}
-
-	handlerErr := s.handler(buf, req)
+	handlerErr := s.handler(w, req)
 	if handlerErr != nil {
-		handlerErr.write(conn)
+
 	}
 
-	headers := response.GetDefaultHeaders(len(buf.Bytes()))
+	// headers := response.GetDefaultHeaders(len(buf.Bytes()))
 
-	err = response.WriteStatusLine(conn, response.Code200)
-	if err != nil {
-		log.Printf("error writing status line: %s", err)
-		conn.Close()
-	}
+	// err = response.WriteStatusLine(conn, response.Code200)
+	// if err != nil {
+	// 	log.Printf("error writing status line: %s", err)
+	// 	conn.Close()
+	// }
 
-	err = response.WriteHeaders(conn, headers)
-	if err != nil {
-		log.Printf("error writing headers: %s", err)
-		conn.Close()
-	}
+	// err = response.WriteHeaders(conn, headers)
+	// if err != nil {
+	// 	log.Printf("error writing headers: %s", err)
+	// 	conn.Close()
+	// }
 
-	conn.Write(buf.Bytes())
+	// conn.Write(buf.Bytes())
 }
 
 func Serve(port int, handler Handler) (*Server, error) {
