@@ -1,12 +1,17 @@
 package main
 
 import (
+	"fmt"
+	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
 	"httpfromtcp/internal/response"
 	"httpfromtcp/internal/server"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 )
 
@@ -29,10 +34,17 @@ func main() {
 func handler(w *response.Writer, r *request.Request) *server.HandlerError {
 	if r.RequestLine.RequestTarget == "/yourproblem" {
 		write400Response(w)
+		return nil
 	}
 
 	if r.RequestLine.RequestTarget == "/myproblem" {
 		write500Response(w)
+		return nil
+	}
+
+	if strings.HasPrefix(r.RequestLine.RequestTarget, "/httpbin") {
+		writeChunkedResponse(w, strings.TrimPrefix(r.RequestLine.RequestTarget, "/httpbin"))
+		return nil
 	}
 
 	write200Response(w)
@@ -52,7 +64,7 @@ func write400Response(w *response.Writer) {
 		</html>
 			`)
 
-	w.WriteStatusLine(response.Code400)
+	w.WriteStatusLine(400)
 
 	headers := response.GetDefaultHeaders(len(body))
 	headers.Override("content-type", "text/html")
@@ -74,7 +86,7 @@ func write500Response(w *response.Writer) {
 	</html>
 	`)
 
-	w.WriteStatusLine(response.Code500)
+	w.WriteStatusLine(500)
 
 	headers := response.GetDefaultHeaders(len(body))
 	headers.Override("content-type", "text/html")
@@ -95,11 +107,46 @@ func write200Response(w *response.Writer) {
 		</body>
 	</html>
 	`)
-	w.WriteStatusLine(response.Code200)
+	w.WriteStatusLine(200)
 
 	headers := response.GetDefaultHeaders(len(body))
 	headers.Override("content-type", "text/html")
 
 	w.WriteHeaders(headers)
 	w.WriteBody(body)
+}
+
+func writeChunkedResponse(w *response.Writer, path string) {
+	httpbinRes, err := http.Get("https://httpbin.org" + path)
+	if err != nil {
+		write500Response(w)
+	}
+
+	err = w.WriteStatusLine(httpbinRes.StatusCode)
+
+	httpbinRes.Header.Del("content-length")
+	httpbinRes.Header.Add("transfer-encoding", "chunked")
+	h := headers.NewHeaders()
+	for key, value := range httpbinRes.Header {
+		h[key] = strings.Join(value, ", ")
+	}
+	w.WriteHeaders(h)
+
+	buf := make([]byte, 1024)
+
+	for {
+		n, err := httpbinRes.Body.Read(buf)
+		fmt.Printf("Data Read: %d\n", n)
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				// TODO: Implement
+			}
+		}
+
+		_, err = w.WriteChunkedBody(buf)
+	}
+
+	w.WriteChunkedBodyDone()
 }

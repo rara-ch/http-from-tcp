@@ -12,8 +12,7 @@ import (
 type Handler func(w *response.Writer, req *request.Request) *HandlerError
 
 type HandlerError struct {
-	StatusCode response.StatusCode
-	Message    string
+	Message string
 }
 
 // func (he *HandlerError) write(w io.Writer) {
@@ -60,7 +59,7 @@ func (s *Server) handle(conn net.Conn) {
 	w := response.NewWriter(conn)
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		w.WriteStatusLine(response.Code500)
+		w.WriteStatusLine(500)
 		body := []byte("could not parse request")
 		w.WriteHeaders(response.GetDefaultHeaders(len(body)))
 		w.WriteBody(body)

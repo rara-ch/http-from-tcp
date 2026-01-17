@@ -29,22 +29,22 @@ func NewWriter(conn net.Conn) *Writer {
 	}
 }
 
-type StatusCode int
+// type StatusCode int
 
-const (
-	Code200 StatusCode = 200
-	Code400 StatusCode = 400
-	Code500 StatusCode = 500
-)
+// const (
+// 	Code200 StatusCode = 200
+// 	Code400 StatusCode = 400
+// 	Code500 StatusCode = 500
+// )
 
-func GetStatusLine(statusCode StatusCode) string {
+func GetStatusLine(statusCode int) string {
 	statusLine := "HTTP/1.1 "
 	switch statusCode {
-	case Code200:
+	case 200:
 		statusLine += "200 OK"
-	case Code400:
+	case 400:
 		statusLine += "400 Bad Request"
-	case Code500:
+	case 500:
 		statusLine += "500 Internal Server Error"
 	default:
 		statusLine += fmt.Sprintf("%v ", statusCode)
@@ -52,7 +52,7 @@ func GetStatusLine(statusCode StatusCode) string {
 	return statusLine + "\r\n"
 }
 
-func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+func (w *Writer) WriteStatusLine(statusCode int) error {
 	if w.state != statusLineState {
 		return errors.New("error: wrote status line after writing headers or body")
 	}
@@ -84,6 +84,15 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 	w.writer.Write([]byte("\r\n"))
 	w.state = bodyState
 	return nil
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	content := []byte(fmt.Sprintf("%X\r\n%s\r\n", len(p), p))
+	return w.writer.Write(content)
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	return w.writer.Write([]byte(fmt.Sprintf("%X\r\n\r\n", 0)))
 }
 
 func (w *Writer) WriteBody(p []byte) (int, error) {
