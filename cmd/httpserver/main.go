@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"httpfromtcp/internal/headers"
 	"httpfromtcp/internal/request"
@@ -126,6 +128,7 @@ func writeChunkedResponse(w *response.Writer, path string) {
 
 	httpbinRes.Header.Del("content-length")
 	httpbinRes.Header.Add("transfer-encoding", "chunked")
+	httpbinRes.Header.Add("Trailer", "X-Content-SHA256, X-Content-Length")
 	h := headers.NewHeaders()
 	for key, value := range httpbinRes.Header {
 		h[key] = strings.Join(value, ", ")
@@ -133,10 +136,10 @@ func writeChunkedResponse(w *response.Writer, path string) {
 	w.WriteHeaders(h)
 
 	buf := make([]byte, 1024)
+	body := []byte{}
 
 	for {
 		n, err := httpbinRes.Body.Read(buf)
-		fmt.Printf("Data Read: %d\n", n)
 		if err != nil {
 			if err == io.EOF {
 				break
@@ -145,8 +148,15 @@ func writeChunkedResponse(w *response.Writer, path string) {
 			}
 		}
 
+		body = append(body, buf[:n]...)
 		_, err = w.WriteChunkedBody(buf)
 	}
 
 	w.WriteChunkedBodyDone()
+	t := headers.NewHeaders()
+	t["X-Content-Length"] = fmt.Sprintf("%d", len(body))
+	sum := sha256.Sum256(body)
+	hash := sum[:]
+	t["X-Content-Sha256"] = hex.EncodeToString(hash)
+	w.WriteTrailers(t)
 }

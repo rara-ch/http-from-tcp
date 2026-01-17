@@ -20,6 +20,7 @@ const (
 	statusLineState writerState = iota
 	headersState
 	bodyState
+	trailersState
 )
 
 func NewWriter(conn net.Conn) *Writer {
@@ -70,19 +71,38 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	return h
 }
 
-func (w *Writer) WriteHeaders(headers headers.Headers) error {
-	if w.state != headersState {
-		return errors.New("error: wrote headers before writing status line or after writing body")
-	}
-	for key, value := range headers {
-		fieldLine := fmt.Sprintf("%s: %s \r\n", key, value)
+func (w *Writer) writeHeadersLoop(h headers.Headers) error {
+	for key, value := range h {
+		fieldLine := fmt.Sprintf("%s: %s\r\n", key, value)
 		_, err := w.writer.Write([]byte(fieldLine))
 		if err != nil {
 			return err
 		}
 	}
 	w.writer.Write([]byte("\r\n"))
+	return nil
+}
+
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.state != headersState {
+		return errors.New("error: wrote headers before writing status line or after writing body")
+	}
+	err := w.writeHeadersLoop(headers)
+	if err != nil {
+		return err
+	}
 	w.state = bodyState
+	return nil
+}
+
+func (w *Writer) WriteTrailers(t headers.Headers) error {
+	if w.state != trailersState {
+		return errors.New("error: wrote trailers before chunked body was done")
+	}
+	err := w.writeHeadersLoop(t)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -92,7 +112,8 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
-	return w.writer.Write([]byte(fmt.Sprintf("%X\r\n\r\n", 0)))
+	w.state = trailersState
+	return w.writer.Write([]byte(fmt.Sprintf("%X\r\n", 0)))
 }
 
 func (w *Writer) WriteBody(p []byte) (int, error) {
