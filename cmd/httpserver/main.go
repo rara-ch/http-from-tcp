@@ -49,7 +49,11 @@ func handler(w *response.Writer, r *request.Request) *server.HandlerError {
 		return nil
 	}
 
-	write200Response(w)
+	if r.RequestLine.Method == "GET" && r.RequestLine.RequestTarget == "/video" {
+		writeVideoFile(w)
+		return nil
+	}
+
 	return nil
 }
 
@@ -159,4 +163,18 @@ func writeChunkedResponse(w *response.Writer, path string) {
 	hash := sum[:]
 	t["X-Content-Sha256"] = hex.EncodeToString(hash)
 	w.WriteTrailers(t)
+}
+
+func writeVideoFile(w *response.Writer) {
+	file, err := os.ReadFile("/home/rahulc/bootdev/httpfromtcp/assets/vim.mp4")
+	if err != nil {
+
+		write500Response(w)
+	}
+
+	w.WriteStatusLine(200)
+	h := response.GetDefaultHeaders(len(file))
+	h.Override("Content-Type", "video/mp4")
+	w.WriteHeaders(h)
+	w.WriteBody(file)
 }
